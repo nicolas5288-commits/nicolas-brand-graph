@@ -1,0 +1,535 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Nicolas · 個人品牌關聯圖</title>
+<script src="https://unpkg.com/force-graph@1.43.4/dist/force-graph.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#121821; --line:#1e2732; --ink:#e8eef5; --dim:#8595a6;
+    --brand:#6ED0EE; --input:#BFE9F7; --intern:#6ED0EE; --output:#1B7FA6; --goal:#F6A02B;
+    --gold:#FFD86E;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang TC","Noto Sans TC",system-ui,sans-serif;overflow:hidden}
+  #graph{position:fixed;inset:0}
+
+  /* 頂部列 */
+  #top{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;gap:14px;
+    padding:14px 18px;pointer-events:none}
+  #top>*{pointer-events:auto}
+  #brandTag{font-size:13px;font-weight:700;letter-spacing:.04em}
+  #brandTag small{display:block;font-weight:400;font-size:11px;color:var(--dim);letter-spacing:0;margin-top:2px}
+  .spacer{flex:1}
+  .seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .seg button{background:none;border:0;color:var(--dim);font-size:12.5px;padding:8px 14px;cursor:pointer;font-family:inherit}
+  .seg button.on{background:var(--brand);color:#062430;font-weight:700}
+  #tokenDot{width:9px;height:9px;border-radius:50%;background:#ff9b8b;flex:none;margin-right:2px}
+  #tokenDot.ok{background:#8fc98f}
+  .ghost{background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:10px;
+    font-size:12.5px;padding:8px 12px;cursor:pointer;font-family:inherit}
+
+  /* 圖例 */
+  #legend{position:fixed;left:18px;bottom:96px;z-index:15;display:flex;flex-direction:column;gap:7px;
+    background:rgba(18,24,33,.7);backdrop-filter:blur(6px);border:1px solid var(--line);
+    border-radius:12px;padding:11px 13px;font-size:12px}
+  #legend .row{display:flex;align-items:center;gap:8px;color:var(--dim)}
+  #legend .dot{width:11px;height:11px;border-radius:50%}
+
+  /* 分層模式的左側大字帶 */
+  #bands{position:fixed;inset:0;z-index:5;pointer-events:none;display:none}
+  #bands.on{display:block}
+  #bands div{position:absolute;left:20px;transform:translateY(-50%);font-size:34px;font-weight:800;
+    letter-spacing:.1em;opacity:.08;color:var(--ink)}
+
+  /* 時間軸 */
+  #timeline{position:fixed;left:50%;transform:translateX(-50%);bottom:20px;z-index:20;width:min(640px,88vw);
+    background:rgba(18,24,33,.82);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:14px;
+    padding:12px 18px 14px}
+  #timeline .tl-head{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--dim);margin-bottom:6px}
+  #tlDate{color:var(--brand);font-weight:700;font-size:14px;font-variant-numeric:tabular-nums}
+  #tlRange{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:4px;
+    background:var(--line);outline:none}
+  #tlRange::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;
+    background:var(--brand);cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+  #tlCount{color:var(--dim)}
+
+  /* 右側節點面板 */
+  #panel{position:fixed;top:0;right:0;bottom:0;width:min(380px,92vw);z-index:30;background:var(--panel);
+    border-left:1px solid var(--line);transform:translateX(105%);transition:transform .28s cubic-bezier(.4,0,.2,1);
+    display:flex;flex-direction:column}
+  #panel.open{transform:none}
+  #panel .ph{padding:20px 20px 14px;border-bottom:1px solid var(--line)}
+  #panel .layerchip{display:inline-block;font-size:11px;padding:3px 9px;border-radius:20px;font-weight:700;color:#062430}
+  #panel h2{margin:10px 0 0;font-size:22px;line-height:1.25}
+  #panel h2[contenteditable]{outline:none}
+  #pClose{position:absolute;top:16px;right:16px;background:none;border:0;color:var(--dim);font-size:22px;cursor:pointer;line-height:1}
+  #panel .pbody{padding:16px 20px;overflow-y:auto;flex:1}
+  .sect{margin-bottom:22px}
+  .sect h3{font-size:11px;letter-spacing:.14em;color:var(--dim);margin:0 0 8px;text-transform:uppercase}
+  #pDesc{font-size:14px;line-height:1.6;color:var(--ink);outline:none;border:1px solid transparent;border-radius:8px;padding:6px 8px;margin:-6px -8px;white-space:pre-wrap}
+  #pDesc:focus{border-color:var(--line);background:#0d1219}
+  .rel{display:flex;flex-wrap:wrap;gap:6px}
+  .rel a{font-size:12px;background:#0d1219;border:1px solid var(--line);border-radius:20px;padding:4px 11px;color:var(--brand);cursor:pointer;text-decoration:none}
+  .rel .arrow{color:var(--dim);font-size:11px}
+  .note{background:#0d1219;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+  .note .d{font-size:11px;color:var(--dim);margin-bottom:4px;font-variant-numeric:tabular-nums}
+  .note .t{font-size:13.5px;line-height:1.5;white-space:pre-wrap}
+  textarea,input,select{font-family:inherit}
+  #noteInput{width:100%;background:#0d1219;border:1px solid var(--line);border-radius:10px;color:var(--ink);
+    padding:10px 12px;font-size:13.5px;resize:vertical;min-height:66px;line-height:1.5}
+  .pfoot{padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap}
+  .btn{border:0;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .btn.p{background:var(--brand);color:#062430}
+  .btn.g{background:#0d1219;border:1px solid var(--line);color:var(--ink)}
+  .btn.d{background:none;color:#ff9b8b;padding:9px 6px}
+  .btn:disabled{opacity:.5;cursor:default}
+
+  /* FAB */
+  #fab{position:fixed;right:22px;bottom:96px;z-index:20;width:54px;height:54px;border-radius:50%;
+    background:var(--brand);color:#062430;border:0;font-size:30px;cursor:pointer;box-shadow:0 8px 24px rgba(110,208,238,.35);line-height:1}
+
+  /* modal 通用 */
+  .mask{position:fixed;inset:0;z-index:50;background:rgba(4,7,11,.66);backdrop-filter:blur(3px);
+    display:none;align-items:center;justify-content:center;padding:20px}
+  .mask.open{display:flex}
+  .card{width:min(420px,100%);background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px}
+  .card h3{margin:0 0 4px;font-size:18px}
+  .card p.hint{margin:0 0 16px;font-size:12.5px;color:var(--dim);line-height:1.6}
+  .card label{display:block;font-size:12px;color:var(--dim);margin:12px 0 5px}
+  .card input,.card select,.card textarea{width:100%;background:#0d1219;border:1px solid var(--line);
+    border-radius:10px;color:var(--ink);padding:11px 12px;font-size:14px}
+  .card .cta{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+  a.lk{color:var(--brand)}
+  #toast{position:fixed;left:50%;bottom:170px;transform:translateX(-50%);z-index:60;background:#04121a;
+    border:1px solid var(--brand);color:var(--ink);font-size:13px;padding:10px 16px;border-radius:10px;
+    opacity:0;transition:opacity .25s;pointer-events:none;max-width:80vw;text-align:center}
+  #toast.show{opacity:1}
+  @media(max-width:560px){
+    #brandTag small{display:none}
+    #legend{bottom:150px;font-size:11px;padding:9px 11px}
+    #fab{bottom:150px}
+    #bands div{font-size:24px}
+  }
+</style>
+
+<div id="graph"></div>
+
+<div id="bands">
+  <div data-layer="目標">目標</div>
+  <div data-layer="輸出">輸出</div>
+  <div data-layer="內化">內化</div>
+  <div data-layer="輸入">輸入</div>
+</div>
+
+<div id="top">
+  <div id="brandTag">Nicolas · 個人品牌關聯圖<small>把自己這個人升級好，帳號只負責誠實記錄</small></div>
+  <div class="spacer"></div>
+  <div class="seg" id="layoutSeg">
+    <button data-mode="free" class="on">自由</button>
+    <button data-mode="layer">分層</button>
+  </div>
+  <button class="ghost" id="keyBtn"><span id="tokenDot"></span>鑰匙</button>
+</div>
+
+<div id="legend">
+  <div class="row"><span class="dot" style="background:var(--goal)"></span>目標 · 想要的結局</div>
+  <div class="row"><span class="dot" style="background:var(--output)"></span>輸出 · 內容與作品</div>
+  <div class="row"><span class="dot" style="background:var(--intern)"></span>內化 · 長在身上的</div>
+  <div class="row"><span class="dot" style="background:var(--input)"></span>輸入 · 餵養你的</div>
+</div>
+
+<button id="fab">＋</button>
+
+<div id="timeline">
+  <div class="tl-head"><span>時間軸 · 回放成長</span><span id="tlDate">—</span></div>
+  <input type="range" id="tlRange" min="0" max="1" value="1" step="1">
+  <div class="tl-head" style="margin:6px 0 0"><span id="tlCount"></span><span style="color:var(--dim)">拖到最右＝現在</span></div>
+</div>
+
+<div id="panel">
+  <button id="pClose">×</button>
+  <div class="ph">
+    <span class="layerchip" id="pLayer"></span>
+    <h2 id="pTitle" contenteditable="true" spellcheck="false"></h2>
+  </div>
+  <div class="pbody">
+    <div class="sect"><h3>它是什麼</h3><div id="pDesc" contenteditable="true" spellcheck="false"></div></div>
+    <div class="sect"><h3>關聯（點擊跳轉）</h3><div class="rel" id="pRel"></div>
+      <button class="btn g" id="addLinkBtn" style="margin-top:10px">＋ 新增關聯</button></div>
+    <div class="sect"><h3 id="notesH">反思筆記</h3><div id="pNotes"></div>
+      <textarea id="noteInput" placeholder="今天對這件事的想法、進度、卡點…"></textarea>
+      <button class="btn p" id="addNoteBtn" style="margin-top:8px">＋ 新增反思</button></div>
+  </div>
+  <div class="pfoot">
+    <button class="btn p" id="saveNodeBtn">儲存變更</button>
+    <button class="btn g" id="focusBtn">聚焦</button>
+    <button class="btn d" id="delNodeBtn">刪除節點</button>
+  </div>
+</div>
+
+<!-- 新增節點 -->
+<div class="mask" id="addMask">
+  <div class="card">
+    <h3>新增節點</h3>
+    <p class="hint">你這個人多了什麼？一個新習慣、一個新輸入、一個新目標。</p>
+    <label>名稱</label><input id="anLabel" placeholder="例：早起晨間儀式">
+    <label>屬於哪一層</label>
+    <select id="anLayer">
+      <option value="輸入">輸入 · 餵養你的（吃什麼、看什麼、跟誰混）</option>
+      <option value="內化">內化 · 長在身上的（習慣、思維、狀態）</option>
+      <option value="輸出">輸出 · 內容與作品</option>
+      <option value="目標">目標 · 想要的結局</option>
+    </select>
+    <label>一句話說明（可留白）</label><textarea id="anDesc" rows="2" placeholder="它對你意味著什麼"></textarea>
+    <div class="cta"><button class="btn g" id="anCancel">取消</button><button class="btn p" id="anSave">新增</button></div>
+  </div>
+</div>
+
+<!-- 新增關聯 -->
+<div class="mask" id="linkMask">
+  <div class="card">
+    <h3>新增關聯</h3>
+    <p class="hint" id="linkFrom"></p>
+    <label>連到哪個節點</label><select id="lkTarget"></select>
+    <label>關係（可留白）</label><input id="lkLabel" placeholder="例：餵養、支撐、通往">
+    <div class="cta"><button class="btn g" id="lkCancel">取消</button><button class="btn p" id="lkSave">建立</button></div>
+  </div>
+</div>
+
+<!-- 鑰匙 -->
+<div class="mask" id="tokenMask">
+  <div class="card">
+    <h3>發布鑰匙（GitHub PAT）</h3>
+    <p class="hint">
+      這張圖的資料存在你的 <b>private</b> repo，需要鑰匙才能讀寫，別人拿不到。鑰匙只存在這台裝置的瀏覽器。<br><br>
+      1. 開 <a class="lk" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub 產生頁</a><br>
+      2. Repository access → Only select repositories → 選 <b>nicolas-brand-graph-data</b><br>
+      3. Permissions → <b>Contents</b> 改 <b>Read and write</b><br>
+      4. Generate，把整串 <code>github_pat_…</code> 貼下面
+    </p>
+    <input type="password" id="tkInput" placeholder="github_pat_…" autocomplete="off">
+    <div class="cta"><button class="btn g" id="tkCancel">取消</button><button class="btn p" id="tkSave">驗證並儲存</button></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+  var DATA_REPO = "nicolas5288-commits/nicolas-brand-graph-data";
+  var API = "https://api.github.com/repos/" + DATA_REPO + "/contents/";
+  var DATA_FILE = "data.json";
+  var TOKEN_KEY = "nicolas_brandgraph_token";
+
+  var LAYERS = ["輸入","內化","輸出","目標"];
+  var COLOR = { "輸入":"#BFE9F7", "內化":"#6ED0EE", "輸出":"#1B7FA6", "目標":"#F6A02B" };
+  var BAND_Y = { "目標":-320, "輸出":-107, "內化":107, "輸入":320 };
+  var GOLD = "#FFD86E";
+
+  var data = { meta:{}, nodes:[], links:[] };
+  var mode = "free";          // free | layer
+  var selected = null;        // 目前選的節點 id
+  var dataSha = null;         // GitHub 檔案 sha
+  var dates = [];             // 時間軸用的排序日期
+  var cutoff = "9999-99-99";  // 目前時間軸日期上限
+
+  var $ = function(id){ return document.getElementById(id); };
+  function token(){ return localStorage.getItem(TOKEN_KEY) || ""; }
+  function today(){ var d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+  function b64utf8(s){ return btoa(unescape(encodeURIComponent(s))); }
+  function fromB64(s){ return decodeURIComponent(escape(atob(s.replace(/\s/g,"")))); }
+  function toast(m){ var t=$("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(t._t); t._t=setTimeout(function(){t.classList.remove("show");},2200); }
+  function slug(){ return "n"+Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-3); }
+  function nodeById(id){ for(var i=0;i<data.nodes.length;i++) if(data.nodes[i].id===id) return data.nodes[i]; return null; }
+  function linkEnd(v){ return (v && typeof v==="object") ? v.id : v; }
+
+  /* ---------- force-graph ---------- */
+  var Graph = ForceGraph()($("graph"))
+    .width(window.innerWidth).height(window.innerHeight)
+    .backgroundColor("#0a0e14")
+    .warmupTicks(160).cooldownTime(8000)
+    .nodeRelSize(5)
+    .nodeId("id")
+    .linkColor(function(){ return "rgba(133,149,166,.28)"; })
+    .linkWidth(function(l){ return l.__hi ? 2 : 1; })
+    .linkDirectionalArrowLength(4).linkDirectionalArrowRelPos(1)
+    .linkDirectionalParticles(function(l){ return l.__hi ? 3 : 0; })
+    .linkDirectionalParticleSpeed(0.008).linkDirectionalParticleWidth(2)
+    .onNodeClick(function(n){ openPanel(n.id); })
+    .onBackgroundClick(function(){ closePanel(); })
+    .nodeCanvasObject(drawNode)
+    .nodePointerAreaPaint(function(n,color,ctx){
+      ctx.fillStyle=color; ctx.beginPath(); ctx.arc(n.x,n.y,nodeR(n)+4,0,2*Math.PI); ctx.fill();
+    });
+  // 電荷力調鬆一點，節點不擠
+  Graph.d3Force("charge").strength(-320);
+  Graph.d3Force("link").distance(64);
+
+  function nodeR(n){ return n.layer==="目標" ? 9 : (n.__deg>3 ? 8 : 6); }
+
+  function drawNode(n, ctx, scale){
+    var r = nodeR(n), col = COLOR[n.layer] || "#888";
+    var faded = selected && n.id!==selected && !(n.__adj);
+    ctx.globalAlpha = faded ? 0.25 : 1;
+    // done 金環
+    if(n.status==="done"){
+      ctx.beginPath(); ctx.arc(n.x,n.y,r+3.5,0,2*Math.PI);
+      ctx.strokeStyle=GOLD; ctx.lineWidth=1.8; ctx.stroke();
+    }
+    // 光暈
+    ctx.beginPath(); ctx.arc(n.x,n.y,r,0,2*Math.PI);
+    ctx.shadowColor=col; ctx.shadowBlur = (n.id===selected)?18:8;
+    ctx.fillStyle=col; ctx.fill(); ctx.shadowBlur=0;
+    if(n.id===selected){ ctx.strokeStyle="#fff"; ctx.lineWidth=1.5; ctx.stroke(); }
+    // 標籤
+    var fs = Math.max(11/scale, 3.2);
+    ctx.font = (n.layer==="目標"?"700 ":"500 ")+fs+"px -apple-system,'PingFang TC',sans-serif";
+    ctx.textAlign="center"; ctx.textBaseline="top";
+    ctx.fillStyle = n.status==="done" ? GOLD : "#cdd8e3";
+    var lbl = (n.status==="done"?"✓ ":"")+n.label;
+    ctx.fillText(lbl, n.x, n.y+r+2.5);
+    ctx.globalAlpha=1;
+  }
+
+  /* ---------- 佈局：自由 / 分層 ---------- */
+  function applyMode(m){
+    mode = m;
+    document.querySelectorAll("#layoutSeg button").forEach(function(b){ b.classList.toggle("on", b.dataset.mode===m); });
+    $("bands").classList.toggle("on", m==="layer");
+    data.nodes.forEach(function(n){
+      if(m==="layer"){ n.fy = BAND_Y[n.layer]; }
+      else { n.fy = undefined; }
+    });
+    if(m==="layer") layoutBandLabels();
+    Graph.d3ReheatSimulation();
+  }
+  function layoutBandLabels(){
+    // 依 BAND_Y 在畫面上抓對應像素高度放大字帶
+    var h = window.innerHeight;
+    // 目標 y=-320 → 頂 ; 輸入 y=320 → 底。線性映射到 14%~86%
+    var map = { "目標":0.15, "輸出":0.38, "內化":0.62, "輸入":0.86 };
+    document.querySelectorAll("#bands div").forEach(function(d){
+      d.style.top = (map[d.dataset.layer]*h)+"px";
+    });
+  }
+  window.addEventListener("resize", function(){
+    Graph.width(window.innerWidth).height(window.innerHeight);
+    if(mode==="layer") layoutBandLabels();
+  });
+
+  /* ---------- 時間軸 ---------- */
+  function buildTimeline(){
+    var set = {};
+    data.nodes.forEach(function(n){ if(n.createdAt) set[n.createdAt]=1; });
+    dates = Object.keys(set).sort();
+    if(dates.indexOf(today())<0) dates.push(today());
+    dates.sort();
+    var r=$("tlRange"); r.min=0; r.max=dates.length-1; r.value=dates.length-1;
+    cutoff = dates[dates.length-1];
+    updateTimelineLabel();
+  }
+  function updateTimelineLabel(){
+    $("tlDate").textContent = (cutoff===dates[dates.length-1] ? "現在 · "+cutoff : cutoff);
+    var vis=0; data.nodes.forEach(function(n){ if(n.createdAt<=cutoff) vis++; });
+    $("tlCount").textContent = vis+" / "+data.nodes.length+" 個節點";
+  }
+  $("tlRange").addEventListener("input", function(){
+    cutoff = dates[+this.value]; updateTimelineLabel(); render();
+  });
+
+  /* ---------- 度數 & 相鄰 ---------- */
+  function computeDegrees(){
+    var deg={}; data.nodes.forEach(function(n){ deg[n.id]=0; });
+    data.links.forEach(function(l){ var s=linkEnd(l.source),t=linkEnd(l.target); if(s in deg)deg[s]++; if(t in deg)deg[t]++; });
+    data.nodes.forEach(function(n){ n.__deg=deg[n.id]||0; });
+  }
+  function markAdjacency(){
+    data.nodes.forEach(function(n){ n.__adj = false; });
+    data.links.forEach(function(l){ l.__hi=false; });
+    if(!selected) return;
+    data.links.forEach(function(l){
+      var s=linkEnd(l.source), t=linkEnd(l.target);
+      if(s===selected||t===selected){ l.__hi=true;
+        var other = nodeById(s===selected?t:s); if(other) other.__adj=true;
+      }
+    });
+    var self=nodeById(selected); if(self) self.__adj=true;
+  }
+
+  /* ---------- render（套用時間軸過濾 + 度數 + 相鄰） ---------- */
+  function render(){
+    computeDegrees();
+    markAdjacency();
+    var vnodes = data.nodes.filter(function(n){ return n.createdAt<=cutoff; });
+    var idset={}; vnodes.forEach(function(n){ idset[n.id]=1; });
+    var vlinks = data.links.filter(function(l){ return idset[linkEnd(l.source)] && idset[linkEnd(l.target)]; });
+    Graph.graphData({ nodes:vnodes, links:vlinks });
+  }
+
+  /* ---------- 面板 ---------- */
+  function layerChipStyle(layer){ return "background:"+COLOR[layer]+";"+(layer==="輸入"?"color:#0a2530":""); }
+  function openPanel(id){
+    var n=nodeById(id); if(!n) return;
+    selected=id;
+    $("pLayer").textContent=n.layer; $("pLayer").style.cssText="display:inline-block;font-size:11px;padding:3px 9px;border-radius:20px;font-weight:700;"+layerChipStyle(n.layer);
+    $("pTitle").textContent=n.label;
+    $("pDesc").textContent=n.desc||"";
+    // 關聯
+    var rel=$("pRel"); rel.innerHTML="";
+    var seen={};
+    data.links.forEach(function(l){
+      var s=linkEnd(l.source),t=linkEnd(l.target);
+      if(s===id||t===id){
+        var oid = s===id?t:s, o=nodeById(oid); if(!o||seen[oid]) return; seen[oid]=1;
+        var dir = s===id?"→":"←";
+        var a=document.createElement("a"); a.innerHTML=(dir==="←"?'<span class="arrow">'+(l.label||"")+' ←</span> ':"")+o.label+(dir==="→"?' <span class="arrow">'+(l.label||"")+" →</span>":"");
+        a.onclick=function(){ openPanel(oid); Graph.centerAt(o.x,o.y,600); };
+        rel.appendChild(a);
+      }
+    });
+    if(!rel.children.length) rel.innerHTML='<span style="font-size:12px;color:#8595a6">還沒有任何關聯——這是孤島。它有在餵養你、或被什麼餵養嗎？</span>';
+    // 筆記
+    var nb=$("pNotes"); nb.innerHTML="";
+    (n.notes||[]).slice().reverse().forEach(function(nt){
+      var d=document.createElement("div"); d.className="note";
+      d.innerHTML='<div class="d">'+nt.date+'</div><div class="t"></div>';
+      d.querySelector(".t").textContent=nt.text; nb.appendChild(d);
+    });
+    $("notesH").textContent="反思筆記 · "+((n.notes||[]).length);
+    $("noteInput").value="";
+    $("panel").classList.add("open");
+    markAdjacency(); Graph.centerAt(n.x, n.y, 600); Graph.nodeCanvasObject(drawNode);
+  }
+  function closePanel(){ selected=null; $("panel").classList.remove("open"); markAdjacency(); }
+  $("pClose").onclick=closePanel;
+  $("focusBtn").onclick=function(){ var n=nodeById(selected); if(n){ Graph.centerAt(n.x,n.y,700); Graph.zoom(2.2,700); } };
+
+  /* ---------- 寫入 GitHub ---------- */
+  function ghHeaders(){ return { "Authorization":"Bearer "+token(), "Accept":"application/vnd.github+json", "Content-Type":"application/json" }; }
+  function loadData(){
+    // 先試本機（開發用），失敗再走 API（Pages 上正式資料在 private repo）
+    return fetch(DATA_FILE+"?t="+Date.now()).then(function(r){
+      if(!r.ok) throw 0; return r.json();
+    }).then(function(j){ if(!Array.isArray(j.nodes)) throw 0; return {json:j, sha:null, src:"local"}; })
+    .catch(function(){
+      if(!token()) return Promise.reject({needToken:true});
+      return fetch(API+DATA_FILE+"?ref=main&t="+Date.now(), {headers:ghHeaders()})
+        .then(function(r){ if(!r.ok) throw new Error("讀取失敗 "+r.status); return r.json(); })
+        .then(function(j){ return {json:JSON.parse(fromB64(j.content)), sha:j.sha, src:"api"}; });
+    });
+  }
+  var saving=false;
+  function commit(message){
+    if(!token()){ toast("要先設定鑰匙才能儲存"); openTokenMask(); return Promise.reject(); }
+    if(saving){ toast("上一筆還在存…"); return Promise.reject(); }
+    saving=true;
+    data.meta = data.meta||{}; data.meta.updatedAt=today();
+    // 存前把 fy / 內部欄位清掉，不寫進 json
+    var clean = { meta:data.meta,
+      nodes:data.nodes.map(function(n){ return {id:n.id,label:n.label,layer:n.layer,desc:n.desc,status:n.status,public:n.public,createdAt:n.createdAt,notes:n.notes||[]}; }),
+      links:data.links.map(function(l){ return {source:linkEnd(l.source),target:linkEnd(l.target),label:l.label,createdAt:l.createdAt}; })
+    };
+    var body={ message:message, content:b64utf8(JSON.stringify(clean,null,2)), branch:"main" };
+    if(dataSha) body.sha=dataSha;
+    return fetch(API+DATA_FILE, {method:"PUT", headers:ghHeaders(), body:JSON.stringify(body)})
+      .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.message||("HTTP "+r.status)); return j; }); })
+      .then(function(j){ dataSha=j.content.sha; saving=false; toast("已儲存 ☁️"); })
+      .catch(function(e){ saving=false; toast("儲存失敗："+(e.message||e)); throw e; });
+  }
+
+  /* ---------- 節點編輯 / 筆記 / 關聯 / 刪除 ---------- */
+  $("saveNodeBtn").onclick=function(){
+    var n=nodeById(selected); if(!n) return;
+    n.label=$("pTitle").textContent.trim()||n.label;
+    n.desc=$("pDesc").textContent.trim();
+    commit("編輯節點 "+n.label).then(function(){ render(); });
+  };
+  $("addNoteBtn").onclick=function(){
+    var n=nodeById(selected); if(!n) return;
+    var txt=$("noteInput").value.trim(); if(!txt){ toast("先寫點東西"); return; }
+    n.notes=n.notes||[]; n.notes.push({date:today(), text:txt});
+    commit("反思 "+n.label).then(function(){ openPanel(selected); });
+  };
+  $("delNodeBtn").onclick=function(){
+    var n=nodeById(selected); if(!n) return;
+    if(!confirm("刪除「"+n.label+"」和它的所有關聯？")) return;
+    data.nodes=data.nodes.filter(function(x){ return x.id!==n.id; });
+    data.links=data.links.filter(function(l){ return linkEnd(l.source)!==n.id && linkEnd(l.target)!==n.id; });
+    commit("刪除節點 "+n.label).then(function(){ closePanel(); buildTimeline(); render(); });
+  };
+
+  /* 新增關聯 */
+  $("addLinkBtn").onclick=function(){
+    var n=nodeById(selected); if(!n) return;
+    $("linkFrom").textContent="從「"+n.label+"」連出：";
+    var sel=$("lkTarget"); sel.innerHTML="";
+    data.nodes.filter(function(x){return x.id!==n.id;})
+      .sort(function(a,b){ return LAYERS.indexOf(a.layer)-LAYERS.indexOf(b.layer); })
+      .forEach(function(x){ var o=document.createElement("option"); o.value=x.id; o.textContent="["+x.layer+"] "+x.label; sel.appendChild(o); });
+    $("lkLabel").value=""; openMask("linkMask");
+  };
+  $("lkSave").onclick=function(){
+    var n=nodeById(selected); if(!n) return;
+    var tid=$("lkTarget").value; if(!tid) return;
+    var dup=data.links.some(function(l){ return (linkEnd(l.source)===n.id&&linkEnd(l.target)===tid)||(linkEnd(l.source)===tid&&linkEnd(l.target)===n.id); });
+    if(dup){ toast("這兩個已經連著了"); return; }
+    data.links.push({source:n.id, target:tid, label:$("lkLabel").value.trim(), createdAt:today()});
+    closeMask("linkMask");
+    commit("新增關聯").then(function(){ render(); openPanel(selected); });
+  };
+
+  /* 新增節點 */
+  $("fab").onclick=function(){ $("anLabel").value=""; $("anDesc").value=""; $("anLayer").value="輸入"; openMask("addMask"); };
+  $("anSave").onclick=function(){
+    var label=$("anLabel").value.trim(); if(!label){ toast("先給個名稱"); return; }
+    var n={ id:slug(), label:label, layer:$("anLayer").value, desc:$("anDesc").value.trim(),
+      status:"active", public:false, createdAt:today(), notes:[] };
+    data.nodes.push(n); closeMask("addMask");
+    commit("新增節點 "+label).then(function(){ buildTimeline(); if(mode==="layer") n.fy=BAND_Y[n.layer]; render(); setTimeout(function(){ openPanel(n.id); },200); });
+  };
+
+  /* ---------- 鑰匙 ---------- */
+  function refreshDot(){ $("tokenDot").classList.toggle("ok", !!token()); }
+  function openTokenMask(){ $("tkInput").value=""; openMask("tokenMask"); }
+  $("keyBtn").onclick=openTokenMask;
+  $("tkSave").onclick=function(){
+    var v=$("tkInput").value.trim(); if(!v){ toast("貼上鑰匙"); return; }
+    // 驗證：試讀一次
+    fetch(API+DATA_FILE+"?ref=main&t="+Date.now(), {headers:{ "Authorization":"Bearer "+v, "Accept":"application/vnd.github+json" }})
+      .then(function(r){
+        if(r.status===200){
+          localStorage.setItem(TOKEN_KEY,v); refreshDot(); closeMask("tokenMask"); toast("鑰匙有效 ✓");
+          return r.json().then(function(j){ data=JSON.parse(fromB64(j.content)); dataSha=j.sha; boot(); });
+        }
+        else if(r.status===404){ localStorage.setItem(TOKEN_KEY,v); refreshDot(); closeMask("tokenMask"); toast("鑰匙已存（資料檔還沒建）"); }
+        else throw new Error("HTTP "+r.status+"，檢查權限與 repo 名稱");
+      }).catch(function(e){ toast("驗證失敗："+(e.message||e)); });
+  };
+
+  /* ---------- mask helpers ---------- */
+  function openMask(id){ $(id).classList.add("open"); }
+  function closeMask(id){ $(id).classList.remove("open"); }
+  $("anCancel").onclick=function(){ closeMask("addMask"); };
+  $("lkCancel").onclick=function(){ closeMask("linkMask"); };
+  $("tkCancel").onclick=function(){ closeMask("tokenMask"); };
+  document.querySelectorAll(".mask").forEach(function(m){ m.addEventListener("click", function(e){ if(e.target===m) m.classList.remove("open"); }); });
+
+  /* ---------- 模式切換 ---------- */
+  document.querySelectorAll("#layoutSeg button").forEach(function(b){ b.onclick=function(){ applyMode(b.dataset.mode); }; });
+
+  /* ---------- boot ---------- */
+  function boot(){
+    computeDegrees(); buildTimeline(); applyMode(mode); render();
+    setTimeout(function(){ Graph.zoomToFit(600,60); }, 700);
+  }
+  refreshDot();
+  loadData().then(function(res){
+    data=res.json; dataSha=res.sha; boot();
+    if(res.src==="local") toast("本機資料（開發模式）");
+  }).catch(function(err){
+    if(err && err.needToken){ toast("先設定鑰匙載入你的圖"); openTokenMask(); }
+    else toast("載入失敗："+(err&&err.message||err));
+  });
+})();
+</script>
