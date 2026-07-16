@@ -239,7 +239,7 @@
   function today(){ var d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
   function b64utf8(s){ return btoa(unescape(encodeURIComponent(s))); }
   function fromB64(s){ return decodeURIComponent(escape(atob(s.replace(/\s/g,"")))); }
-  function toast(m){ var t=$("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(t._t); t._t=setTimeout(function(){t.classList.remove("show");},2200); }
+  function toast(m,ms){ var t=$("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(t._t); t._t=setTimeout(function(){t.classList.remove("show");},ms||2200); }
   function slug(){ return "n"+Math.random().toString(36).slice(2,8)+Date.now().toString(36).slice(-3); }
   function nodeById(id){ for(var i=0;i<data.nodes.length;i++) if(data.nodes[i].id===id) return data.nodes[i]; return null; }
   function linkEnd(v){ return (v && typeof v==="object") ? v.id : v; }
@@ -431,11 +431,24 @@
       links:data.links.map(function(l){ return {source:linkEnd(l.source),target:linkEnd(l.target),label:l.label,createdAt:l.createdAt}; })
     };
     var body={ message:message, content:b64utf8(JSON.stringify(clean,null,2)), branch:"main" };
-    if(dataSha) body.sha=dataSha;
-    return fetch(API+DATA_FILE, {method:"PUT", headers:ghHeaders(), body:JSON.stringify(body)})
-      .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.message||("HTTP "+r.status)); return j; }); })
+    // 存前先抓 GitHub 上最新 sha，杜絕版本衝突（多裝置 / 上次殘留舊 sha）
+    return fetch(API+DATA_FILE+"?ref=main&t="+Date.now(), {headers:ghHeaders()})
+      .then(function(r){ return r.ok ? r.json().then(function(j){ return j.sha; }) : null; })
+      .catch(function(){ return null; })
+      .then(function(sha){
+        if(sha) body.sha=sha;
+        return fetch(API+DATA_FILE, {method:"PUT", headers:ghHeaders(), body:JSON.stringify(body)});
+      })
+      .then(function(r){ return r.json().catch(function(){return{};}).then(function(j){ if(!r.ok) throw {status:r.status, msg:j.message||""}; return j; }); })
       .then(function(j){ dataSha=j.content.sha; saving=false; toast("已儲存 ☁️"); })
-      .catch(function(e){ saving=false; toast("儲存失敗："+(e.message||e)); throw e; });
+      .catch(function(e){ saving=false; toast(saveErr(e), 6500); throw e; });
+  }
+  function saveErr(e){
+    var s=e&&e.status;
+    if(s===403 || s===401) return "儲存失敗：鑰匙沒有寫入權限。請到 GitHub 把這把 token 的 Contents 改成「Read and write」再重貼一次。";
+    if(s===404) return "儲存失敗：找不到資料檔或 repo。確認鑰匙有授權 nicolas-brand-graph-data。";
+    if(s===409 || s===422) return "儲存失敗：版本衝突，請再按一次儲存。";
+    return "儲存失敗："+(e&&(e.msg||e.message)||("HTTP "+s));
   }
 
   /* ---------- 節點編輯 / 筆記 / 關聯 / 刪除 ---------- */
